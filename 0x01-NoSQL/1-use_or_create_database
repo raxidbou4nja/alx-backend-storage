@@ -1,2 +1,2 @@
-# Connect to MongoDB and insert document into the school collection
-db.school.insertOne({name: "Holberton school"})
+# use or create db
+use my_db;
