@@ -3,6 +3,6 @@
 
 
 def insert_school(mongo_collection, **kwargs):
-    # insert to school
+    """ insert to school """
     insert = mongo_collection.insert(kwargs)
     return insert
