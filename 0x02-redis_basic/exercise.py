@@ -1,74 +1,87 @@
 #!/usr/bin/env python3
 
-import uuid
-import redis
+import sys
 from functools import wraps
-from typing import Any, Callable, Union
-"""
-    cache
-"""
+from typing import Union, Optional, Callable
+from uuid import uuid4
 
+import redis
 
-class Cache:
-    def __init__(self):
-        self._redis = redis.Redis()
-        self._redis.flushdb(True)
-
-    def store(self, data: Union[str, bytes, int, float]) -> str:
-        data_key = str(uuid.uuid4())
-        self._redis.set(data_key, data)
-        return data_key
-
-    def get(self, key: str,
-            fn: Callable = None) -> Union[str, bytes, int, float]:
-        data = self._redis.get(key)
-        return fn(data) if fn else data
-
-    def get_str(self, key: str) -> str:
-        return self.get(key, lambda x: x.decode('utf-8'))
-
-    def get_int(self, key: str) -> int:
-        return self.get(key, lambda x: int(x))
+UnionOfTypes = Union[str, bytes, int, float]
 
 
 def count_calls(method: Callable) -> Callable:
+    """
+    count how many times methods of the Cache class are called.
+    """
+    key = method.__qualname__
+
     @wraps(method)
-    def invoker(self, *args, **kwargs) -> Any:
-        if isinstance(self._redis, redis.Redis):
-            self._redis.incr(method.__qualname__)
+    def wrapper(self, *args, **kwargs):
+        """
+        Wrap
+        """
+        self._redis.incr(key)
         return method(self, *args, **kwargs)
-    return invoker
+
+    return wrapper
 
 
 def call_history(method: Callable) -> Callable:
+    """
+    add its input parameters to one list in redis
+    """
+    key = method.__qualname__
+    i = "".join([key, ":inputs"])
+    o = "".join([key, ":outputs"])
+
     @wraps(method)
-    def invoker(self, *args, **kwargs) -> Any:
-        in_key = '{}:inputs'.format(method.__qualname__)
-        out_key = '{}:outputs'.format(method.__qualname__)
-        if isinstance(self._redis, redis.Redis):
-            self._redis.rpush(in_key, str(args))
-        output = method(self, *args, **kwargs)
-        if isinstance(self._redis, redis.Redis):
-            self._redis.rpush(out_key, output)
-        return output
-    return invoker
+    def wrapper(self, *args, **kwargs):
+        """ Wrapp """
+        self._redis.rpush(i, str(args))
+        res = method(self, *args, **kwargs)
+        self._redis.rpush(o, str(res))
+        return res
+
+    return wrapper
 
 
-def replay(fn: Callable) -> None:
-    if not hasattr(fn, '__self__')
-    or not isinstance(fn.__self__._redis, redis.Redis):
-        return
-    redis_store = fn.__self__._redis
-    fxn_name = fn.__qualname__
-    in_key = '{}:inputs'.format(fxn_name)
-    out_key = '{}:outputs'.format(fxn_name)
-    fxn_call_count = int(redis_store.get(fxn_name) or 0)
-    print('{} was called {} times:'.format(fxn_name, fxn_call_count))
-    fxn_inputs = redis_store.lrange(in_key, 0, -1)
-    fxn_outputs = redis_store.lrange(out_key, 0, -1)
-    for fxn_input, fxn_output in zip(fxn_inputs, fxn_outputs):
-        print('{}(*{}) -> {}'.format(
-            fxn_name,
-            fxn_input.decode("utf-8"),
-            fxn_output,
-        ))
+class Cache:
+    """
+    Cache redis class
+    """
+
+    def __init__(self):
+        """
+        constructor of the redis model
+        """
+        self._redis = redis.Redis()
+        self._redis.flushdb()
+
+    @count_calls
+    @call_history
+    def store(self, data: UnionOfTypes) -> str:
+        """
+        generate a random key (e.g. using uuid)
+        """
+        key = str(uuid4())
+        self._redis.mset({key: data})
+        return key
+
+    def get(self, key: str, fn: Optional[Callable] = None) \
+            -> UnionOfTypes:
+        """
+        convert the data back
+        """
+        if fn:
+            return fn(self._redis.get(key))
+        data = self._redis.get(key)
+        return data
+
+    def get_int(self: bytes) -> int:
+        """get a number"""
+        return int.from_bytes(self, sys.byteorder)
+
+    def get_str(self: bytes) -> str:
+        """get a string"""
+        return self.decode("utf-8")
