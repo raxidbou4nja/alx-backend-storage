@@ -30,6 +30,7 @@ class Cache:
     def get_int(self, key: str) -> int:
         return self.get(key, lambda x: int(x))
 
+
 def count_calls(method: Callable) -> Callable:
     @wraps(method)
     def invoker(self, *args, **kwargs) -> Any:
@@ -37,6 +38,7 @@ def count_calls(method: Callable) -> Callable:
             self._redis.incr(method.__qualname__)
         return method(self, *args, **kwargs)
     return invoker
+
 
 def call_history(method: Callable) -> Callable:
     @wraps(method)
@@ -50,6 +52,7 @@ def call_history(method: Callable) -> Callable:
             self._redis.rpush(out_key, output)
         return output
     return invoker
+
 
 def replay(fn: Callable) -> None:
     if not hasattr(fn, '__self__')
